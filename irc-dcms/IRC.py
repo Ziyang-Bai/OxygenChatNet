@@ -93,7 +93,7 @@ class MyIRCBot(SingleServerIRCBot):
                 logging.info(f"[IRC] {nick}: {message}")
             else:
                 logging.info(f"[IRC] {nick}: {message}")
-                self.dcms.post_message_room("IRC", nick, message)
+                self.dcms.post_message_room(message,"IRC",nick)
 
     def send_message_to_irc(self, message):
         self.connection.privmsg(self.channel, message)
