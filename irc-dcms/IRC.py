@@ -1,3 +1,4 @@
+from typing import Tuple, Optional
 import logging
 import os
 import re
@@ -7,34 +8,39 @@ from irc.bot import SingleServerIRCBot
 from logging.handlers import TimedRotatingFileHandler
 import DCMS
 
+# 机器人配置
+IRC_CONFIG = {
+    "server": "irc.freenode.net",
+    "port": 6667,
+    "nickname": "ircdcms_bridge",
+    "channel": "#dcms"
+}
 
-########## 机器人参数配置区 ##############
-server = "irc.freenode.net"
-port = 6667
-nickname = "ircdcms_bridge"
-channel = "#dcms"
-
-
-
-# 日志配置（保持不变）
-os.makedirs("log", exist_ok=True)
-log_handler = TimedRotatingFileHandler(
-    filename="log/irc_bot.log",
-    when="midnight",
-    interval=1,
-    backupCount=7,
-    encoding="utf-8"
-)
-console_handler = logging.StreamHandler()
-formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-log_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-logger.addHandler(log_handler)
-logger.addHandler(console_handler)
+def setup_logging() -> None:
+    """配置日志系统，包括文件和控制台输出"""
+    os.makedirs("log", exist_ok=True)
+    log_handler = TimedRotatingFileHandler(
+        filename="log/irc_bot.log",
+        when="midnight",
+        interval=1,
+        backupCount=7,
+        encoding="utf-8"
+    )
+    console_handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    
+    for handler in (log_handler, console_handler):
+        handler.setFormatter(formatter)
+        logging.getLogger().addHandler(handler)
+    
+    logging.getLogger().setLevel(logging.INFO)
 
 class MyIRCBot(SingleServerIRCBot):
+    """
+    IRC 机器人实现，用于在 IRC 和 DCMS 之间转发消息。
+    
+    负责处理 IRC 事件并与 DCMS 系统交互，实现消息的双向转发。
+    """
     def __init__(self, server, port, nickname, channel, dcms: DCMS):
         super().__init__([(server, port)], nickname, nickname)
         self.channel = channel
@@ -95,10 +101,9 @@ class MyIRCBot(SingleServerIRCBot):
 def poll_api_forever(dcms, irc_bot: MyIRCBot):
     while True:
         try:
-            # 假设你从 DCMS 平台获得最新的状态消息
             result = dcms.get_new_message()
 
-            # 比较新消息与上次保存的消息 ID
+            # Compare
             if result is not None:
                 for message in result:
                     #print(message['id_user'])
@@ -136,4 +141,5 @@ def run_bot_forever():
             time.sleep(15)
 
 if __name__ == "__main__":
+    setup_logging()
     run_bot_forever()
