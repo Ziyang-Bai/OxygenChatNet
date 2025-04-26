@@ -12,7 +12,7 @@ import DCMS
 IRC_CONFIG = {
     "server": "irc.freenode.net",
     "port": 6667,
-    "nickname": "ircdcms_br",
+    "nickname": "ircdcms_bridge",
     "channel": "#dcms"
 }
 
