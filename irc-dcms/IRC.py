@@ -58,11 +58,13 @@ class MyIRCBot(SingleServerIRCBot):
         message = event.arguments[0]
         nick = event.source.nick
 
-        if nick == "qqirc_bridge":
+        if message.startswith(';'):
+            return
 
+        if nick == "qqirc_bridge":
             if message.startswith("[QQ]"):
                 msg = message.split(":", 1)[1].strip()
-                if msg.startswith("!") or msg.startswith("?"):
+                if msg.startswith("!qqirc"):  
                     logging.info(f"{message}")
                 else:
                     logging.info(f"{message}")
@@ -72,13 +74,16 @@ class MyIRCBot(SingleServerIRCBot):
         elif nick == "ircxmpp_bridge":
             if message.startswith("[XMPP]"):
                 msg = message.split(":", 1)[1].strip()
-                if msg.startswith("!") or msg.startswith("?"):
+                if msg.startswith("!ircxmpp"):  
                     logging.info(f"{message}")
                 else:
                     logging.info(f"{message}")
                     self.dcms.post_to_message_board_only_message(message)
         else:
-            if message.startswith("!") or message.startswith("?"):
+            if message.startswith("!ircdcms"):  
+                cmd = message[8:].strip()
+                if cmd == "status":
+                    self.connection.privmsg(self.channel, ";IRCDCMSBot: Connected to DCMS bridge")
                 logging.info(f"[IRC] {nick}: {message}")
             else:
                 logging.info(f"[IRC] {nick}: {message}")
