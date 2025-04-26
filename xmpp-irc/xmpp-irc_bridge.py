@@ -151,42 +151,49 @@ class IRCBot:
                 formatted = f"[IRC] {sender}: {message}"
             self.xmpp_bot.send_message(formatted)
 
-    def send_to_irc(self, message):
+    def send_to_irc(self, message: str) -> None:
         # 供 XMPP bot 调用
         self.connection.privmsg(self.channel, message)
 
-    def start(self):
+    def start(self) -> None:
+        # 启动IRC机器人的主事件循环
         self.reactor.process_forever()
 
-def run_xmpp_bot(xmpp_bot):
+def run_xmpp_bot(xmpp_bot: XMPPBot) -> None:
+    # 启动XMPP机器人的工作线程函数
     xmpp_bot.connect()
     xmpp_bot.process()
 
-def main():
-    irc_bot = None  # 先声明
+def main() -> None:
+    # 主函数，负责初始化和启动两个机器人
+    irc_bot = None  # 声明IRC机器人变量
 
-    def irc_send_callback(msg):
+    def irc_send_callback(msg: str) -> None:
+        # 初始回调函数
         if irc_bot:
             irc_bot.send_to_irc(msg)
 
+    # 创建XMPP机器人实例
     xmpp_bot = XMPPBot(XMPP_JID, XMPP_PASSWORD, XMPP_ROOM, XMPP_NICK, irc_send_callback=irc_send_callback)
 
+    # 在新线程中启动XMPP机器人
     xmpp_thread = threading.Thread(target=run_xmpp_bot, args=(xmpp_bot,))
-    xmpp_thread.daemon = True
+    xmpp_thread.daemon = True  # 设置为守护线程，主程序退出时自动结束
     xmpp_thread.start()
 
-    time.sleep(2)
+    time.sleep(2)  # 等待XMPP连接建立
 
-    # 现在初始化 irc_bot，并将其赋值给外部变量
-    nonlocal_irc_bot = {}
+    
+    nonlocal_irc_bot = {}  #
     irc_bot = IRCBot(IRC_SERVER, IRC_PORT, IRC_NICK, IRC_CHANNEL, xmpp_bot)
     nonlocal_irc_bot['bot'] = irc_bot
 
-    # 更新回调中的 irc_bot
+    # 更新XMPP机器人的回调函数，使用新的IRC机器人实例
     def irc_send_callback2(msg):
         nonlocal_irc_bot['bot'].send_to_irc(msg)
     xmpp_bot.irc_send_callback = irc_send_callback2
 
+    # 启动IRC机器人（注意阻塞主线程）
     irc_bot.start()
 
 if __name__ == "__main__":
