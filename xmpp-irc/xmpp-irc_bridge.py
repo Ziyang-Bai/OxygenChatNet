@@ -67,10 +67,11 @@ class XMPPBot:
             user = msg.getFrom().getResource()
             body = msg.getBody()
             
-            if body and body.startswith(';'):
-                return
-
             if body:
+                # 不转发以分号开头的消息和命令
+                if body.startswith(';') or body.startswith('!'):
+                    return
+
                 if body.startswith("!ircxmpp"):  
                     cmd = body[8:].strip()
                     if cmd == "on":
@@ -123,33 +124,12 @@ class IRCBot:
         message = event.arguments[0]
         sender = event.source.nick
 
-        if message.startswith(';'):
+        # 不转发以分号开头的消息和命令
+        if message.startswith(';') or message.startswith('!'):
             return
         
-        if message.startswith("!ircxmpp"):  
-            cmd = message[8:].strip()
-            if cmd == "on":
-                relay_enabled.set()
-                connection.privmsg(self.channel, ";Relay enabled")
-            elif cmd == "off":
-                relay_enabled.clear()
-                connection.privmsg(self.channel, ";Relay disabled")
-            elif cmd == "status":
-                status = "enabled" if relay_enabled.is_set() else "disabled"
-                uptime = datetime.datetime.now() - start_time
-                xmpp_status = "connected" if self.xmpp_bot.client.isConnected() else "disconnected"
-                irc_status = "connected" if self.connection.is_connected() else "disconnected"
-                connection.privmsg(
-                    self.channel,
-                    f";Status: {status} | Online: {str(uptime).split('.')[0]} | IRC: {irc_status} | XMPP: {xmpp_status}"
-                )
-            return
-
+        formatted = f"[IRC] {sender}: {message}"
         if relay_enabled.is_set():
-            if message.startswith("[QQ] ") or message.startswith("[DCMS] "):
-                formatted = message
-            else:
-                formatted = f"[IRC] {sender}: {message}"
             self.xmpp_bot.send_message(formatted)
 
     def send_to_irc(self, message: str) -> None:

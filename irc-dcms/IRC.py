@@ -12,7 +12,7 @@ import DCMS
 IRC_CONFIG = {
     "server": "irc.freenode.net",
     "port": 6667,
-    "nickname": "ircdcms_bridge",
+    "nickname": "ircdcms_br",
     "channel": "#dcms"
 }
 
@@ -58,36 +58,38 @@ class MyIRCBot(SingleServerIRCBot):
         message = event.arguments[0]
         nick = event.source.nick
 
-        if message.startswith(';'):
+        # 不转发以分号和感叹号开头的消息
+        if message.startswith(';') or message.startswith('!'):
+            if message.startswith("!ircdcms"):  # 只处理自己的命令
+                cmd = message[8:].strip()
+                if cmd == "status":
+                    self.connection.privmsg(self.channel, ";IRCDCMSBot: Connected to DCMS bridge")
+                logging.info(f"[IRC] {nick}: {message}")
             return
 
         if nick == "qqirc_bridge":
             if message.startswith("[QQ]"):
                 msg = message.split(":", 1)[1].strip()
-                if msg.startswith("!qqirc"):  
+                # 不转发QQ的命令消息
+                if msg.startswith('!') or msg.startswith(';'):
                     logging.info(f"{message}")
-                else:
-                    logging.info(f"{message}")
-                    self.dcms.post_to_message_board_only_message(message)
+                    return
+                logging.info(f"{message}")
+                self.dcms.post_to_message_board_only_message(message)
             else:
                 logging.info(f"[QQ-IRCBOT] {message}")
         elif nick == "ircxmpp_bridge":
             if message.startswith("[XMPP]"):
                 msg = message.split(":", 1)[1].strip()
-                if msg.startswith("!ircxmpp"):  
+                # 不转发XMPP的命令消息
+                if msg.startswith('!') or msg.startswith(';'):
                     logging.info(f"{message}")
-                else:
-                    logging.info(f"{message}")
-                    self.dcms.post_to_message_board_only_message(message)
+                    return
+                logging.info(f"{message}")
+                self.dcms.post_to_message_board_only_message(message)
         else:
-            if message.startswith("!ircdcms"):  
-                cmd = message[8:].strip()
-                if cmd == "status":
-                    self.connection.privmsg(self.channel, ";IRCDCMSBot: Connected to DCMS bridge")
-                logging.info(f"[IRC] {nick}: {message}")
-            else:
-                logging.info(f"[IRC] {nick}: {message}")
-                self.dcms.post_to_message_board("IRC", nick, message)
+            logging.info(f"[IRC] {nick}: {message}")
+            self.dcms.post_to_message_board("IRC", nick, message)
 
     def send_message_to_irc(self, message):
         self.connection.privmsg(self.channel, message)
