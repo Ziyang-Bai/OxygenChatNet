@@ -19,7 +19,7 @@ IRC_NICK = "ircxmpp_bridge"
 IRC_CHANNEL = "#dcms"
 
 # XMPP 设置
-XMPP_JID = "ircxmpp@xmpp.jp"  
+XMPP_JID = "xmppirc_bridge@xmpp.jp"  
 XMPP_PASSWORD = "123456"
 XMPP_ROOM = "dcms@conference.xmpp.jp"
 XMPP_NICK = "xmppirc_bridge"  
