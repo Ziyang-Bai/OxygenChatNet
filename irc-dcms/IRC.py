@@ -1,4 +1,3 @@
-from typing import Tuple, Optional
 import logging
 import os
 import re
@@ -66,7 +65,7 @@ class MyIRCBot(SingleServerIRCBot):
                     logging.info(f"{message}")
                 else:
                     logging.info(f"{message}")
-                    self.dcms.post_to_message_board_only_message(message)
+                    self.dcms.post_message_room(message)
             else:
                 logging.info(f"[QQ-IRCBOT] {message}")
         elif nick == "ircxmpp_bridge":
@@ -76,13 +75,13 @@ class MyIRCBot(SingleServerIRCBot):
                     logging.info(f"{message}")
                 else:
                     logging.info(f"{message}")
-                    self.dcms.post_to_message_board_only_message(message)
+                    self.dcms.post_message_room(message)
         else:
             if message.startswith("!") or message.startswith("?"):
                 logging.info(f"[IRC] {nick}: {message}")
             else:
                 logging.info(f"[IRC] {nick}: {message}")
-                self.dcms.post_to_message_board("IRC", nick, message)
+                self.dcms.post_message_room("IRC", nick, message)
 
     def send_message_to_irc(self, message):
         self.connection.privmsg(self.channel, message)
@@ -101,8 +100,7 @@ class MyIRCBot(SingleServerIRCBot):
 def poll_api_forever(dcms, irc_bot: MyIRCBot):
     while True:
         try:
-            result = dcms.get_new_message()
-
+            result = dcms.get_new_messages_from_room()
             # Compare
             if result is not None:
                 for message in result:
@@ -120,16 +118,16 @@ def poll_api_forever(dcms, irc_bot: MyIRCBot):
         time.sleep(10)
 
 def run_bot_forever():
-    global server, port, nickname, channel
 
     dcms = DCMS.DCMS("huan_bot_test", "P@ssword2010")
     dcms.login()
-    logging.info(dcms.load_cookies())
+    #logging.info(dcms.load_cookies())
 
     while True:
         try:
             logging.info("Starting IRC bot...")
-            bot = MyIRCBot(server, port, nickname, channel, dcms)
+            bot = MyIRCBot(IRC_CONFIG["server"], IRC_CONFIG["port"], IRC_CONFIG["nickname"], IRC_CONFIG["channel"], dcms)
+
 
             api_polling_thread = threading.Thread(target=poll_api_forever, args=(dcms, bot))
             api_polling_thread.daemon = True  # 设置为守护线程，程序退出时自动结束
