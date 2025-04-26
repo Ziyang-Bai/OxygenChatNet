@@ -5,13 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="50f39d7f-9ea8-4812-8ee7-15542762ee2f" name="更改" comment="">
-      <change afterPath="$PROJECT_DIR$/irc-dcms/cookies.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/irc-dcms/log/irc_bot.log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/IRC_DCMS_Bot.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/IRC_DCMS_Bot.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/irc-dcms/DCMS.py" beforeDir="false" afterPath="$PROJECT_DIR$/irc-dcms/DCMS.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/irc-dcms/IRC.py" beforeDir="false" afterPath="$PROJECT_DIR$/irc-dcms/IRC.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/xmpp-irc/xmpp-irc_bridge.py" beforeDir="false" afterPath="$PROJECT_DIR$/xmpp-irc/xmpp-irc_bridge.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -43,7 +38,7 @@
     "Python.IRC.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "main",
+    "git-widget-placeholder": "正在合并 main",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -72,7 +67,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1745583299861</updated>
-      <workItem from="1745583300837" duration="21891000" />
+      <workItem from="1745583300837" duration="22197000" />
     </task>
     <servers />
   </component>
@@ -116,7 +111,7 @@
     </option>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/IRC_DCMS_Bot$IRC.coverage" NAME="IRC 覆盖结果" MODIFIED="1745640483977" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/irc-dcms" />
+    <SUITE FILE_PATH="coverage/IRC_DCMS_Bot$IRC.coverage" NAME="IRC 覆盖结果" MODIFIED="1745641076551" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/irc-dcms" />
     <SUITE FILE_PATH="coverage/IRC_DCMS_Bot$DCMS.coverage" NAME="DCMS 覆盖结果" MODIFIED="1745640377621" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/irc-dcms" />
   </component>
 </project>

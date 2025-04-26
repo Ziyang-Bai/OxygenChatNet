@@ -1,3 +1,4 @@
+from typing import Tuple, Optional
 import logging
 import os
 import re
@@ -57,11 +58,21 @@ class MyIRCBot(SingleServerIRCBot):
         message = event.arguments[0]
         nick = event.source.nick
 
+        # 不转发以分号和感叹号开头的消息
+        if message.startswith(';') or message.startswith('!'):
+            if message.startswith("!ircdcms"):  # 只处理自己的命令
+                cmd = message[8:].strip()
+                if cmd == "status":
+                    self.connection.privmsg(self.channel, ";IRCDCMSBot: Connected to DCMS bridge")
+                logging.info(f"[IRC] {nick}: {message}")
+            return
+
         if nick == "qqirc_bridge":
 
             if message.startswith("[QQ]"):
                 msg = message.split(":", 1)[1].strip()
-                if msg.startswith("!") or msg.startswith("?"):
+                # 不转发QQ的命令消息
+                if msg.startswith('!') or msg.startswith(';'):
                     logging.info(f"{message}")
                 else:
                     logging.info(f"{message}")
@@ -71,7 +82,8 @@ class MyIRCBot(SingleServerIRCBot):
         elif nick == "ircxmpp_bridge":
             if message.startswith("[XMPP]"):
                 msg = message.split(":", 1)[1].strip()
-                if msg.startswith("!") or msg.startswith("?"):
+                # 不转发XMPP的命令消息
+                if msg.startswith('!') or msg.startswith(';'):
                     logging.info(f"{message}")
                 else:
                     logging.info(f"{message}")

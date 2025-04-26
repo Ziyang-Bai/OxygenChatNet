@@ -15,14 +15,14 @@ start_time = datetime.datetime.now()
 # IRC 设置
 IRC_SERVER = "chat.freenode.net"
 IRC_PORT = 6667
-IRC_NICK = "ircxmpp_bridge"
+IRC_NICK = "ircxmpp_bridge"  
 IRC_CHANNEL = "#dcms"
 
 # XMPP 设置
-XMPP_JID = "xmppirc_bridge@xmpp.jp"
+XMPP_JID = "xmppirc_bridge@xmpp.jp"  
 XMPP_PASSWORD = "123456"
 XMPP_ROOM = "dcms@conference.xmpp.jp"
-XMPP_NICK = "xmppirc_bridge"
+XMPP_NICK = "xmppirc_bridge"  
 
 # 为旧版 xmpp 库 patch SSL
 def wrap_socket(sock, keyfile=None, certfile=None, server_side=False,
@@ -63,37 +63,40 @@ class XMPPBot:
         self.client.send(msg)
 
     def on_groupchat_message(self, conn, msg):
-        # 只处理群聊消息
         if msg.getType() == 'groupchat' and msg.getFrom().getResource() != self.nick:
             user = msg.getFrom().getResource()
             body = msg.getBody()
+            
             if body:
-                # 指令处理
-                if body == "?on":
-                    relay_enabled.set()
-                    self.send_message("Enabled relay")
+                # 不转发以分号开头的消息和命令
+                if body.startswith(';') or body.startswith('!'):
                     return
-                elif body == "?off":
-                    relay_enabled.clear()
-                    self.send_message("Disabled relay")
+
+                if body.startswith("!ircxmpp"):  
+                    cmd = body[8:].strip()
+                    if cmd == "on":
+                        relay_enabled.set()
+                        self.send_message(";Relay enabled")
+                    elif cmd == "off":
+                        relay_enabled.clear()
+                        self.send_message(";Relay disabled")
+                    elif cmd == "status":
+                        status = "enabled" if relay_enabled.is_set() else "disabled"
+                        uptime = datetime.datetime.now() - start_time
+                        xmpp_status = "connected" if self.client.isConnected() else "disconnected"
+                        irc_status = "unknown"
+                        if self.irc_send_callback and hasattr(self.irc_send_callback, '__self__'):
+                            irc_bot = self.irc_send_callback.__self__
+                            if hasattr(irc_bot, 'connection'):
+                                irc_status = "connected" if irc_bot.connection.is_connected() else "disconnected"
+                        self.send_message(
+                            f";Status: {status} | Online: {str(uptime).split('.')[0]} | IRC: {irc_status} | XMPP: {xmpp_status}"
+                        )
                     return
-                elif body == "?status":
-                    status = "enabled" if relay_enabled.is_set() else "disabled"
-                    uptime = datetime.datetime.now() - start_time
-                    xmpp_status = "connected" if self.client.isConnected() else "disconnected"
-                    irc_status = "unknown"
-                    if self.irc_send_callback and hasattr(self.irc_send_callback, '__self__'):
-                        irc_bot = self.irc_send_callback.__self__
-                        if hasattr(irc_bot, 'connection'):
-                            irc_status = "connected" if irc_bot.connection.is_connected() else "disconnected"
-                    self.send_message(
-                        f"Status：{status} | Online：{str(uptime).split('.')[0]} | IRC: {irc_status} | XMPP: {xmpp_status}"
-                    )
-                    return
-                # 非指令才转发，且relay_enabled为True才转发
+
                 if relay_enabled.is_set():
                     formatted = f"[XMPP] {user}: {body}"
-                    print(f"Received message from XMPP: {formatted}")  # 调试输出
+                    print(f"Received message from XMPP: {formatted}")
                     if self.irc_send_callback:
                         self.irc_send_callback(formatted)
 
@@ -120,35 +123,13 @@ class IRCBot:
     def on_pubmsg(self, connection, event):
         message = event.arguments[0]
         sender = event.source.nick
-        formatted = f"[IRC] {sender}: {message}"
+
+        # 不转发以分号开头的消息和命令
+        if message.startswith(';') or message.startswith('!'):
+            return
         
-        # 调试信息
-        print(f"Received message from IRC: {formatted}")  # 输出收到的 IRC 消息
-
-        if message == "?on":
-            relay_enabled.set()
-            connection.privmsg(self.channel, "Enabled relay")
-            return
-        elif message == "?off":
-            relay_enabled.clear()
-            connection.privmsg(self.channel, "Disabled relay")
-            return
-        elif message == "?status":
-            status = "enabled" if relay_enabled.is_set() else "disabled"
-            uptime = datetime.datetime.now() - start_time
-            xmpp_status = "connected" if self.xmpp_bot.client.isConnected() else "disconnected"
-            irc_status = "connected" if self.connection.is_connected() else "disconnected"
-            connection.privmsg(
-                self.channel,
-                f"Status：{status} | Online：{str(uptime).split('.')[0]} | IRC: {irc_status} | XMPP: {xmpp_status}"
-            )
-            return
-
+        formatted = f"[IRC] {sender}: {message}"
         if relay_enabled.is_set():
-            if message.startswith("[QQ] ") or message.startswith("[DCMS] "):
-                formatted = message
-            else:
-                formatted = f"[IRC] {sender}: {message}"
             self.xmpp_bot.send_message(formatted)
 
     def send_to_irc(self, message: str) -> None:
