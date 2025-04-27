@@ -1,6 +1,5 @@
 from typing import Optional, List, Dict, Any
 import json
-import os
 
 import requests
 
@@ -8,6 +7,8 @@ BASE_URL = "https://dev.3g.cx/"
 
 class DCMS:
     """DCMS API客户端，用于与留言板系统交互。"""
+
+    room_id = 4
     
     def __init__(self, username: str, password: str) -> None:
         """
@@ -41,7 +42,7 @@ class DCMS:
         with open("cookies.json", "w") as f:
             json.dump(cookies, f)
         
-        self._get_last_message_id()
+        self._get_last_message_id_from_room()
         print("登录成功")
         return True
 
@@ -114,6 +115,7 @@ class DCMS:
         messages = self.get_message_board()
         
         for message in messages:
+
             if message['id'] > self._last_message_id:
                 self._last_message_id = message['id']
                 new_messages.append(message)
@@ -124,6 +126,70 @@ class DCMS:
     def _get_last_message_id(self) -> None:
         """获取最后一条消息的ID。"""
         messages = self.get_message_board()
+        if messages:
+            self._last_message_id = messages[0]['id']
+
+    def post_message_room(self, message: str, platform: str = "", name: str = "") -> None:
+        """
+        发送消息到聊天室。
+
+        Args:
+            message: 消息内容
+            platform: 可选，平台标识
+            name: 可选，发送者名称
+        """
+
+        if platform and name:
+            message = f"[{platform}] {name}: {message}"
+
+        self.refresh_cookies()
+        url = f"{BASE_URL}api.php?action=chat-msg-add&room={self.room_id}"
+        #print(url)
+        response = requests.post(
+            url=url,
+            cookies=self._load_cookies(),
+            data={"msg": message}
+        )
+
+        if response.text.startswith('{"status":"error"'):
+            print(f"错误: {response.text}")
+        else:
+            self._last_message_id = int(response.json()["id"])
+
+    def get_message_room(self) -> Optional[List[Dict[str, Any]]]:
+        """获取聊天室消息。"""
+        self.refresh_cookies()
+        url = f"{BASE_URL}api.php?action=chat-msg-list&room={self.room_id}&page=1"
+        #print(url)
+        response = requests.get(url=url, cookies=self._load_cookies())
+
+        if response.text.startswith('{"status":"error"'):
+            print(f"错误: {response.text}")
+            return None
+
+        return response.json().get("data", [])
+
+    def get_new_messages_from_room(self) -> List[Dict[str, Any]]:
+        """
+        获取自上次检查以来的聊天室新消息。
+
+        Returns:
+            List 新消息的列表
+        """
+        new_messages = []
+        messages = self.get_message_room()
+
+        for message in messages:
+            if message['id'] > self._last_message_id:
+                self._last_message_id = message['id']
+                new_messages.append(message)
+
+        new_messages.reverse()
+        return new_messages
+
+    def _get_last_message_id_from_room(self) -> None:
+        """获取最后一条消息的ID。"""
+        messages = self.get_message_room()
         if messages:
             self._last_message_id = messages[0]['id']
 
