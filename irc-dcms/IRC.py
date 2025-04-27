@@ -16,6 +16,7 @@ IRC_CONFIG = {
     "channel": "#dcms"
 }
 
+
 def setup_logging() -> None:
     """配置日志系统，包括文件和控制台输出"""
     os.makedirs("log", exist_ok=True)
@@ -45,6 +46,7 @@ class MyIRCBot(SingleServerIRCBot):
         super().__init__([(server, port)], nickname, nickname)
         self.channel = channel
         self.dcms = dcms
+        self.nickname = nickname
 
     def on_welcome(self, connection, event):
         logging.info(f"Connected to {self.connection.server}")
@@ -100,6 +102,9 @@ class MyIRCBot(SingleServerIRCBot):
 
     def on_disconnect(self, connection, event):
         logging.warning("Disconnected from server.")
+        self.connection.connect(server=self.connection.server, port=self.connection.port, nickname=self.nickname)
+        logging.info(f"Connected to {self.connection.server}")
+        connection.join(self.channel)
         # 移除了异常抛出，让外部循环处理重连
 
     def on_kick(self, connection, event):

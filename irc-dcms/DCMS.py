@@ -2,6 +2,8 @@ from typing import Optional, List, Dict, Any
 import json
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3 import Retry
 
 BASE_URL = "https://dev.3g.cx/"
 
@@ -9,6 +11,18 @@ class DCMS:
     """DCMS API客户端，用于与留言板系统交互。"""
 
     room_id = 4
+
+    retry_strategy = Retry(
+        total=3,  # 最大重试次数
+        backoff_factor=1,  # 延迟倍数，每次重试会增加延迟时间
+        status_forcelist=[500, 502, 503, 504],  # 对于这些状态码进行重试
+    )
+
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+
+    # 创建一个会话并使用该适配器
+    session = requests.Session()
+    session.mount("https://", adapter)
     
     def __init__(self, username: str, password: str) -> None:
         """
@@ -31,7 +45,7 @@ class DCMS:
         url = f"{BASE_URL}api.php?action=login"
         data = {"nick": self.username, "password": self.password}
         
-        response = requests.post(url=url, data=data)
+        response = requests.post(url=url, data=data, timeout=5)
         cookies = requests.utils.dict_from_cookiejar(response.cookies)
         
         data = response.json()
@@ -61,7 +75,7 @@ class DCMS:
         if not cookies:
             return False
             
-        response = requests.post(f"{BASE_URL}api.php", cookies=cookies)
+        response = requests.post(f"{BASE_URL}api.php", cookies=cookies,timeout=5)
         return response.json().get("status") == "success"
 
     def refresh_cookies(self) -> None:
@@ -86,7 +100,8 @@ class DCMS:
         response = requests.post(
             url=url,
             cookies=self._load_cookies(),
-            data={"msg": message}
+            data={"msg": message},
+            timeout = 5
         )
         
         if response.text.startswith('{"status":"error"'):
@@ -96,7 +111,7 @@ class DCMS:
         """获取留言板消息。"""
         self.refresh_cookies()
         url = f"{BASE_URL}api.php?action=guest-msg-list&page=1"
-        response = requests.get(url=url, cookies=self._load_cookies())
+        response = requests.get(url=url, cookies=self._load_cookies(),timeout=5)
         
         if response.text.startswith('{"status":"error"'):
             print(f"错误: {response.text}")
@@ -148,7 +163,8 @@ class DCMS:
         response = requests.post(
             url=url,
             cookies=self._load_cookies(),
-            data={"msg": message}
+            data={"msg": message},
+            timeout=5
         )
 
         if response.text.startswith('{"status":"error"'):
@@ -161,7 +177,7 @@ class DCMS:
         self.refresh_cookies()
         url = f"{BASE_URL}api.php?action=chat-msg-list&room={self.room_id}&page=1"
         #print(url)
-        response = requests.get(url=url, cookies=self._load_cookies())
+        response = requests.get(url=url, cookies=self._load_cookies(),timeout=5)
 
         if response.text.startswith('{"status":"error"'):
             print(f"错误: {response.text}")
@@ -205,7 +221,7 @@ class DCMS:
         """
         self.refresh_cookies()
         url = f"{BASE_URL}api.php?action=user-info&id={user_id}"
-        response = requests.get(url=url, cookies=self._load_cookies())
+        response = requests.get(url=url, cookies=self._load_cookies(),timeout=5)
         
         if response.text.startswith('{"status":"error"'):
             print(f"错误: {response.text}")
