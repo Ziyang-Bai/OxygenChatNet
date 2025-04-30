@@ -33,13 +33,13 @@ IRC_NICK    = "irctele_bridge"
 IRC_CHANNEL = "#dcms"
 
 # —— Telegram 配置 ——  
-TELEGRAM_TOKEN   = "8194432969:AAEeAWXT0GB97pz0K9lnyhYnBBcJHJyrdpo"
-TELEGRAM_CHAT_ID = -4732792754  # 请替换为实际打印出的群组 ID
+TELEGRAM_TOKEN   = "Hide"
+TELEGRAM_CHAT_ID = -1  # 请替换为实际打印出的群组 ID
 
 class TelegramBot:
     def __init__(self, token: str, chat_id: int):
         self.chat_id = chat_id
-        self.app = ApplicationBuilder().token(token).build()
+        self.app = ApplicationBuilder().token(token).http_version("1.1").connection_pool_size(100).build()
         self.bot_username = None
         self.irc_send_callback = None
         self.loop = None  # 用于存储轮询线程的事件循环
@@ -89,7 +89,7 @@ class TelegramBot:
 
         # 转发到 IRC
         if relay_enabled.is_set() and self.irc_send_callback:
-            msg = f"[Telegram] {user}: {text}"
+            msg = f"[TG] {user}: {text}"
             logging.debug(f"调度转发到 IRC: {msg}")
             self.irc_send_callback(msg)
 
@@ -118,10 +118,21 @@ class IRCBot:
         text = event.arguments[0]
         user = event.source.nick
         logging.debug(f"IRCBot 收到消息：{user}: {text}")
-        if relay_enabled.is_set() and not text.startswith(('!',';')):
+
+        # 去掉 [IRC] 前缀，避免嵌套
+        if text.startswith("[IRC]"):
+            text = text[len("[IRC]"):].strip()
+
+        # 转发到 Telegram
+        if relay_enabled.is_set() and not text.startswith(('!', ';')):
             msg = f"[IRC] {user}: {text}"
+            if "[QQ]" in text:  # 如果消息中包含 [QQ]，只保留 [QQ] 开头的部分
+                msg = text[text.index("[QQ]"):]
+            if "[XMPP]" in text:
+                msg = text[text.index("[XMPP]"):]
+            if "[DCMS]" in text:
+                msg = text[text.index("[DCMS]"):]
             logging.debug(f"调度转发到 Telegram: {msg}")
-            # 将发送任务交给 TelegramBot 那条线程的事件循环
             asyncio.run_coroutine_threadsafe(
                 self.relay_bot.app.bot.send_message(self.relay_bot.chat_id, msg),
                 self.relay_bot.loop
