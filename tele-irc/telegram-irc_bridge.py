@@ -12,7 +12,7 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# —— 日志配置 ——
+# 日志配置 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.DEBUG
@@ -21,20 +21,20 @@ logging.getLogger('telegram').setLevel(logging.DEBUG)
 logging.getLogger('telegram.ext').setLevel(logging.DEBUG)
 logging.getLogger('irc').setLevel(logging.DEBUG)
 
-# —— 状态控制 ——  
+# 状态控制
 relay_enabled = threading.Event()
 relay_enabled.set()
 start_time = datetime.datetime.now()
 
-# —— IRC 配置 ——  
+# IRC 配置
 IRC_SERVER  = "chat.freenode.net"
 IRC_PORT    = 6667
 IRC_NICK    = "irctele_bridge"
 IRC_CHANNEL = "#dcms"
 
-# —— Telegram 配置 ——  
+#Telegram 配置
 TELEGRAM_TOKEN   = "Hide"
-TELEGRAM_CHAT_ID = -1  # 请替换为实际打印出的群组 ID
+TELEGRAM_CHAT_ID = -1
 
 class TelegramBot:
     def __init__(self, token: str, chat_id: int):
