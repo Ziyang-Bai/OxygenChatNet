@@ -2,58 +2,61 @@ import threading
 import time
 import datetime
 import ssl
+import logging
 import xmpp
 import irc.client
 import irc.connection
-import xml.etree.ElementTree as ET  # 用于解析 XML 配置文件
+import xml.etree.ElementTree as ET
 
-# 从 XML 配置文件加载配置
-def load_config(file_path):
-    tree = ET.parse(file_path)
-    root = tree.getroot()
-    irc_config = root.find("irc")
-    xmpp_config = root.find("xmpp")
-    return {
-        "irc": {
-            "server": irc_config.find("server").text,
-            "port": int(irc_config.find("port").text),
-            "nickname": irc_config.find("nickname").text,
-            "channel": irc_config.find("channel").text,
-        },
-        "xmpp": {
-            "jid": xmpp_config.find("jid").text,
-            "password": xmpp_config.find("password").text,
-            "room": xmpp_config.find("room").text,
-            "nick": xmpp_config.find("nick").text,
-        },
-    }
-
-# 加载配置
-config = load_config("config.xml")
+# 配置日志
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger('Bridge')
 
 # 状态控制变量
 relay_enabled = threading.Event()
 relay_enabled.set()
 start_time = datetime.datetime.now()
 
-# 使用配置文件中的值
-IRC_SERVER = config["irc"]["server"]
-IRC_PORT = config["irc"]["port"]
-IRC_NICK = config["irc"]["nickname"]
-IRC_CHANNEL = config["irc"]["channel"]
+# 已知标签前缀，用于避免重复封装
+TAG_PREFIXES = ('INVAILD')
+# 用于提取已有标签的消息段
+EXTRACT_TAGS = ('[QQ]', '[XMPP]', '[DCMS]', '[WV]')
 
-XMPP_JID = config["xmpp"]["jid"]
-XMPP_PASSWORD = config["xmpp"]["password"]
-XMPP_ROOM = config["xmpp"]["room"]
-XMPP_NICK = config["xmpp"]["nick"]
+# 从 config.xml 加载配置
+def load_config(config_path="config.xml"):
+    tree = ET.parse(config_path)
+    root = tree.getroot()
+    config = {}
+    for child in root:
+        config[child.tag] = child.text
+    return config
+
+# 加载配置
+config = load_config()
+
+# IRC 设置
+IRC_SERVER = config.get("IRC_SERVER")
+IRC_PORT = int(config.get("IRC_PORT"))
+IRC_NICK = config.get("IRC_NICK")
+IRC_CHANNEL = config.get("IRC_CHANNEL")
+
+# XMPP 设置
+XMPP_JID = config.get("XMPP_JID")
+XMPP_PASSWORD = config.get("XMPP_PASSWORD")
+XMPP_ROOM = config.get("XMPP_ROOM")
+XMPP_NICK = config.get("XMPP_NICK")
 
 # 为旧版 xmpp 库 patch SSL
 def wrap_socket(sock, keyfile=None, certfile=None, server_side=False,
                 do_handshake_on_connect=True, suppress_ragged_eofs=True):
     context = ssl.create_default_context()
     context.check_hostname = False
+    logger.debug("Wrapping socket with custom SSL context")
     return context.wrap_socket(sock, server_hostname=None)
-
 ssl.wrap_socket = wrap_socket
 
 class XMPPBot:
@@ -64,24 +67,38 @@ class XMPPBot:
         self.room_jid = xmpp.JID(room)
         self.nick = nick
         self.irc_send_callback = irc_send_callback
+        logger.debug(f"Initialized XMPPBot: {jid} -> {room} as {nick}")
 
     def connect(self):
+        logger.info("Connecting to XMPP server...")
         if not self.client.connect():
+            logger.error("XMPP 连接失败")
             raise Exception("XMPP连接失败")
+        logger.info("Authenticating XMPP...")
         if not self.client.auth(self.jid.getNode(), self.password):
+            logger.error("XMPP 认证失败")
             raise Exception("XMPP认证失败")
         self.client.sendInitPresence()
-        self.join_room()
-        # 注册 groupchat 消息处理
+        self.client.RegisterHandler('presence', self.on_presence)
         self.client.RegisterHandler('message', self.on_groupchat_message)
+        self.join_room()
+        logger.info(f"Join request sent to {self.room_jid}/{self.nick}, proceeding without explicit confirmation.")
 
     def join_room(self):
-        presence = xmpp.Presence(to=f"{self.room_jid}/{self.nick}")
-        self.client.send(presence)
-        print(f"Joined XMPP room {self.room_jid}")
+        pres = xmpp.Presence(to=f"{self.room_jid}/{self.nick}")
+        x = xmpp.Node('x', {'xmlns': xmpp.NS_MUC})
+        pres.addChild(node=x)
+        logger.debug(f"Sending MUC join presence: {pres}")
+        self.client.send(pres)
+
+    def on_presence(self, conn, presence):
+        frm = presence.getFrom()
+        typ = presence.getType() or 'available'
+        logger.debug(f"Presence received from {frm}: type={typ}, stanza={presence}")
 
     def send_message(self, message):
-        to_jid = str(self.room_jid) 
+        to_jid = str(self.room_jid)
+        logger.debug(f"XMPP sending to {to_jid}: {message}")
         msg = xmpp.Message(to=to_jid, body=message, typ='groupchat')
         self.client.send(msg)
 
@@ -89,115 +106,133 @@ class XMPPBot:
         if msg.getType() == 'groupchat' and msg.getFrom().getResource() != self.nick:
             user = msg.getFrom().getResource()
             body = msg.getBody()
-            
-            if body:
-                # 不转发以分号开头的消息和命令
-                if body.startswith(';') or body.startswith('!'):
-                    return
+            logger.debug(f"XMPP message from {user}: {body}")
+            if not body or body.startswith((';', '!')):
+                return
+            # 避免多次封装：如果已有标签前缀则跳过
+            if any(body.startswith(tag) for tag in TAG_PREFIXES):
+                logger.debug("Message already contains a tag, skipping relay.")
+                return
+            # 过滤并格式化
+            if "[QQ]" in body:
+                body = body[body.index("[QQ]"):]
+            elif "[XMPP]" in body:
+                body = body[body.index("[XMPP]"):]
+            elif "[DCMS]" in body:
+                body = body[body.index("[DCMS]"):]
+            asis = body
+            formatted = f"[XMPP] {user}: {asis}"
+            logger.debug(f"Filtered XMPP message: {formatted}")
+            if relay_enabled.is_set():
+                logger.info(f"Relaying XMPP→IRC: {formatted}")
+                try:
+                    self.irc_send_callback(formatted)
+                except Exception as e:
+                    logger.error(f"Relay XMPP→IRC error: {e}")
 
-                if body.startswith("!ircxmpp"):  
-                    cmd = body[8:].strip()
-                    if cmd == "on":
-                        relay_enabled.set()
-                        self.send_message(";Relay enabled")
-                    elif cmd == "off":
-                        relay_enabled.clear()
-                        self.send_message(";Relay disabled")
-                    elif cmd == "status":
-                        status = "enabled" if relay_enabled.is_set() else "disabled"
-                        uptime = datetime.datetime.now() - start_time
-                        xmpp_status = "connected" if self.client.isConnected() else "disconnected"
-                        irc_status = "unknown"
-                        if self.irc_send_callback and hasattr(self.irc_send_callback, '__self__'):
-                            irc_bot = self.irc_send_callback.__self__
-                            if hasattr(irc_bot, 'connection'):
-                                irc_status = "connected" if irc_bot.connection.is_connected() else "disconnected"
-                        self.send_message(
-                            f";Status: {status} | Online: {str(uptime).split('.')[0]} | IRC: {irc_status} | XMPP: {xmpp_status}"
-                        )
-                    return
-
-                if relay_enabled.is_set():
-                    formatted = f"[XMPP] {user}: {body}"
-                    print(f"Received message from XMPP: {formatted}")
-                    if self.irc_send_callback:
-                        self.irc_send_callback(formatted)
+    def handle_control(self, cmd):
+        logger.info(f"XMPP control cmd: {cmd}")
+        if cmd == 'on':
+            relay_enabled.set()
+            self.send_message(';Relay enabled')
+        elif cmd == 'off':
+            relay_enabled.clear()
+            self.send_message(';Relay disabled')
+        elif cmd == 'status':
+            uptime = datetime.datetime.now() - start_time
+            xmpp_status = 'connected' if self.client.isConnected() else 'disconnected'
+            irc_status = 'unknown'
+            try:
+                irc_status = 'connected' if self.irc_send_callback.__self__.connection.is_connected() else 'disconnected'
+            except:
+                pass
+            status_msg = (
+                f";Status: {'enabled' if relay_enabled.is_set() else 'disabled'} | "
+                f"Uptime: {str(uptime).split('.')[0]} | IRC: {irc_status} | XMPP: {xmpp_status}"
+            )
+            self.send_message(status_msg)
+            logger.debug(f"Status: {status_msg}")
 
     def process(self):
         while True:
-            self.client.Process(1)
+            try:
+                self.client.Process(1)
+            except Exception as e:
+                logger.error(f"XMPP processing error: {e}")
+                time.sleep(5)
 
 class IRCBot:
     def __init__(self, server, port, nickname, channel, xmpp_bot):
-        self.server = server
-        self.port = port
-        self.nickname = nickname
-        self.channel = channel
-        self.xmpp_bot = xmpp_bot
         self.reactor = irc.client.Reactor()
         self.connection = self.reactor.server().connect(server, port, nickname)
-        self.connection.add_global_handler("welcome", self.on_connect)
-        self.connection.add_global_handler("pubmsg", self.on_pubmsg)
+        self.connection.add_global_handler('welcome', self.on_connect)
+        self.connection.add_global_handler('pubmsg', self.on_pubmsg)
+        self.xmpp_bot = xmpp_bot
+        self.channel = channel
 
     def on_connect(self, connection, event):
+        logger.info(f"IRC joined channel {self.channel}")
         connection.join(self.channel)
-        print("Joined IRC channel", self.channel)
 
     def on_pubmsg(self, connection, event):
-        message = event.arguments[0]
-        sender = event.source.nick
-
-        # 不转发以分号开头的消息和命令
-        if message.startswith(';') or message.startswith('!'):
+        msg = event.arguments[0]
+        user = event.source.nick
+        logger.debug(f"IRC message from {user}: {msg}")
+        # 控制前缀过滤
+        if msg.startswith((';', '!')):
             return
-        
-        formatted = f"[IRC] {sender}: {message}"
-        if relay_enabled.is_set():
+        # 如果消息中包含已知标签段，则提取该段并转发
+        for tag in EXTRACT_TAGS:
+            idx = msg.find(tag)
+            if idx != -1:
+                extracted = msg[idx:]
+                logger.info(f"Relaying IRC→XMPP extracted tag segment: {extracted}")
+                try:
+                    self.xmpp_bot.send_message(extracted)
+                except Exception as e:
+                    logger.error(f"Relay IRC→XMPP error: {e}")
+                return
+        # 否则正常封装转发
+        formatted = f"[IRC] {user}: {msg}"
+        logger.info(f"Relaying IRC→XMPP: {formatted}")
+        try:
             self.xmpp_bot.send_message(formatted)
+        except Exception as e:
+            logger.error(f"Relay IRC→XMPP error: {e}")
 
-    def send_to_irc(self, message: str) -> None:
-        # 供 XMPP bot 调用
-        self.connection.privmsg(self.channel, message)
+    def send_to_irc(self, message):
+        logger.debug(f"IRC sending: {message}")
+        try:
+            self.connection.privmsg(self.channel, message)
+            logger.info(f"Sent to IRC: {message}")
+        except Exception as e:
+            logger.error(f"IRC send error: {e}")
 
-    def start(self) -> None:
-        # 启动IRC机器人的主事件循环
-        self.reactor.process_forever()
+    def start(self):
+        try:
+            logger.info("Starting IRC loop")
+            self.reactor.process_forever()
+        except Exception as e:
+            logger.error(f"IRC loop error: {e}")
 
-def run_xmpp_bot(xmpp_bot: XMPPBot) -> None:
-    # 启动XMPP机器人的工作线程函数
+
+def run_xmpp_bot(xmpp_bot):
     xmpp_bot.connect()
     xmpp_bot.process()
 
-def main() -> None:
-    # 主函数，负责初始化和启动两个机器人
-    irc_bot = None  # 声明IRC机器人变量
 
-    def irc_send_callback(msg: str) -> None:
-        # 初始回调函数
+def main():
+    irc_bot = None
+    def irc_send(msg):
         if irc_bot:
             irc_bot.send_to_irc(msg)
 
-    # 创建XMPP机器人实例
-    xmpp_bot = XMPPBot(XMPP_JID, XMPP_PASSWORD, XMPP_ROOM, XMPP_NICK, irc_send_callback=irc_send_callback)
-
-    # 在新线程中启动XMPP机器人
-    xmpp_thread = threading.Thread(target=run_xmpp_bot, args=(xmpp_bot,))
-    xmpp_thread.daemon = True  # 设置为守护线程，主程序退出时自动结束
-    xmpp_thread.start()
-
-    time.sleep(2)  # 等待XMPP连接建立
-
-    nonlocal_irc_bot = {}  #
+    xmpp_bot = XMPPBot(XMPP_JID, XMPP_PASSWORD, XMPP_ROOM, XMPP_NICK, irc_send)
+    threading.Thread(target=run_xmpp_bot, args=(xmpp_bot,), daemon=True).start()
+    time.sleep(2)
     irc_bot = IRCBot(IRC_SERVER, IRC_PORT, IRC_NICK, IRC_CHANNEL, xmpp_bot)
-    nonlocal_irc_bot['bot'] = irc_bot
-
-    # 更新XMPP机器人的回调函数，使用新的IRC机器人实例
-    def irc_send_callback2(msg):
-        nonlocal_irc_bot['bot'].send_to_irc(msg)
-    xmpp_bot.irc_send_callback = irc_send_callback2
-
-    # 启动IRC机器人（注意阻塞主线程）
+    xmpp_bot.irc_send_callback = irc_bot.send_to_irc
     irc_bot.start()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
