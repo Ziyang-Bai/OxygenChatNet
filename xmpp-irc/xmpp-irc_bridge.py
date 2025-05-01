@@ -5,24 +5,47 @@ import ssl
 import xmpp
 import irc.client
 import irc.connection
-# 这辈子都不再用slixmpp了
-# 真疯了
-# 状态控制变量 
+import xml.etree.ElementTree as ET  # 用于解析 XML 配置文件
+
+# 从 XML 配置文件加载配置
+def load_config(file_path):
+    tree = ET.parse(file_path)
+    root = tree.getroot()
+    irc_config = root.find("irc")
+    xmpp_config = root.find("xmpp")
+    return {
+        "irc": {
+            "server": irc_config.find("server").text,
+            "port": int(irc_config.find("port").text),
+            "nickname": irc_config.find("nickname").text,
+            "channel": irc_config.find("channel").text,
+        },
+        "xmpp": {
+            "jid": xmpp_config.find("jid").text,
+            "password": xmpp_config.find("password").text,
+            "room": xmpp_config.find("room").text,
+            "nick": xmpp_config.find("nick").text,
+        },
+    }
+
+# 加载配置
+config = load_config("config.xml")
+
+# 状态控制变量
 relay_enabled = threading.Event()
 relay_enabled.set()
 start_time = datetime.datetime.now()
 
-# IRC 设置
-IRC_SERVER = "chat.freenode.net"
-IRC_PORT = 6667
-IRC_NICK = "ircxmpp_bridge"  
-IRC_CHANNEL = "#dcms"
+# 使用配置文件中的值
+IRC_SERVER = config["irc"]["server"]
+IRC_PORT = config["irc"]["port"]
+IRC_NICK = config["irc"]["nickname"]
+IRC_CHANNEL = config["irc"]["channel"]
 
-# XMPP 设置
-XMPP_JID = "xmppirc_bridge@xmpp.jp"  
-XMPP_PASSWORD = "123456"
-XMPP_ROOM = "dcms@conference.xmpp.jp"
-XMPP_NICK = "xmppirc_bridge"  
+XMPP_JID = config["xmpp"]["jid"]
+XMPP_PASSWORD = config["xmpp"]["password"]
+XMPP_ROOM = config["xmpp"]["room"]
+XMPP_NICK = config["xmpp"]["nick"]
 
 # 为旧版 xmpp 库 patch SSL
 def wrap_socket(sock, keyfile=None, certfile=None, server_side=False,
@@ -164,7 +187,6 @@ def main() -> None:
 
     time.sleep(2)  # 等待XMPP连接建立
 
-    
     nonlocal_irc_bot = {}  #
     irc_bot = IRCBot(IRC_SERVER, IRC_PORT, IRC_NICK, IRC_CHANNEL, xmpp_bot)
     nonlocal_irc_bot['bot'] = irc_bot

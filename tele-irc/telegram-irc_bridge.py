@@ -4,6 +4,7 @@ import time
 import datetime
 import irc.client
 import asyncio
+import xml.etree.ElementTree as ET  # 用于解析 XML 配置文件
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -11,6 +12,28 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
+
+# 从 XML 配置文件加载配置
+def load_config(file_path):
+    tree = ET.parse(file_path)
+    root = tree.getroot()
+    irc_config = root.find("irc")
+    telegram_config = root.find("telegram")
+    return {
+        "irc": {
+            "server": irc_config.find("server").text,
+            "port": int(irc_config.find("port").text),
+            "nickname": irc_config.find("nickname").text,
+            "channel": irc_config.find("channel").text,
+        },
+        "telegram": {
+            "token": telegram_config.find("token").text,
+            "chat_id": int(telegram_config.find("chat_id").text),
+        },
+    }
+
+# 加载配置
+config = load_config("config.xml")
 
 # 日志配置 
 logging.basicConfig(
@@ -26,15 +49,14 @@ relay_enabled = threading.Event()
 relay_enabled.set()
 start_time = datetime.datetime.now()
 
-# IRC 配置
-IRC_SERVER  = "chat.freenode.net"
-IRC_PORT    = 6667
-IRC_NICK    = "irctele_bridge"
-IRC_CHANNEL = "#dcms"
+# 使用配置文件中的值
+IRC_SERVER = config["irc"]["server"]
+IRC_PORT = config["irc"]["port"]
+IRC_NICK = config["irc"]["nickname"]
+IRC_CHANNEL = config["irc"]["channel"]
 
-#Telegram 配置
-TELEGRAM_TOKEN   = "Hide"
-TELEGRAM_CHAT_ID = -1
+TELEGRAM_TOKEN = config["telegram"]["token"]
+TELEGRAM_CHAT_ID = config["telegram"]["chat_id"]
 
 class TelegramBot:
     def __init__(self, token: str, chat_id: int):
