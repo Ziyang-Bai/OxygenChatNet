@@ -5,12 +5,12 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3 import Retry
 
-BASE_URL = "https://dev.3g.cx/"
+BASE_URL = "https://3g.cx/"
 
 class DCMS:
     """DCMS API客户端，用于与留言板系统交互。"""
 
-    room_id = 4
+    room_id = 34
 
     retry_strategy = Retry(
         total=3,  # 最大重试次数

@@ -1,3 +1,4 @@
+import queue
 from typing import Tuple, Optional
 import logging
 import os
@@ -47,10 +48,24 @@ class MyIRCBot(SingleServerIRCBot):
         self.channel = channel
         self.dcms = dcms
         self.nickname = nickname
+        self.message_queue = queue.Queue()
+        self.connected = False
 
     def on_welcome(self, connection, event):
         logging.info(f"Connected to {self.connection.server}")
+        self.connected = True
         connection.join(self.channel)
+
+        # 补发之前未成功发送的消息
+        while not self.message_queue.empty():
+            msg = self.message_queue.get()
+            try:
+                self.connection.privmsg(self.channel, msg)
+                logging.info(f"[IRC - resend] {msg}")
+            except Exception as e:
+                logging.warning(f"Failed to resend message: {msg}, {e}")
+                self.message_queue.put(msg)
+                break  # 连接可能又失效了，停止重发
 
     def on_join(self, connection, event):
         nick = event.source.nick  # 获取加入者的昵称
@@ -69,7 +84,7 @@ class MyIRCBot(SingleServerIRCBot):
                 logging.info(f"[IRC] {nick}: {message}")
             return
 
-        if nick == "qqirc_bridge":
+        if nick.startswith("qqirc_bridge"):
 
             if message.startswith("[QQ]"):
                 msg = message.split(":", 1)[1].strip()
@@ -81,7 +96,7 @@ class MyIRCBot(SingleServerIRCBot):
                     self.dcms.post_message_room(message)
             else:
                 logging.info(f"[QQ-IRCBOT] {message}")
-        elif nick == "ircxmpp_bridge":
+        elif nick.startswith("ircxmpp_bridge"):
             if message.startswith("[XMPP]"):
                 msg = message.split(":", 1)[1].strip()
                 # 不转发XMPP的命令消息
@@ -98,20 +113,32 @@ class MyIRCBot(SingleServerIRCBot):
                 self.dcms.post_message_room(message,"IRC",nick)
 
     def send_message_to_irc(self, message):
-        self.connection.privmsg(self.channel, message)
+        if self.connected:
+            try:
+                self.connection.privmsg(self.channel, message)
+            except Exception as e:
+                logging.warning(f"Send failed, queuing: {message}")
+                self.connected = False
+                self.message_queue.put(message)
+        else:
+            logging.info(f"[Queueing] IRC not connected. Queued: {message}")
+            self.message_queue.put(message)
 
     def on_disconnect(self, connection, event):
         logging.warning("Disconnected from server.")
+        self.connected = False
         self.connection.connect(server=self.connection.server, port=self.connection.port, nickname=self.nickname)
         logging.info(f"Connected to {self.connection.server}")
+        self.connected = True
         connection.join(self.channel)
-        # 移除了异常抛出，让外部循环处理重连
 
     def on_kick(self, connection, event):
         target = event.arguments[0]
         if target == self.connection.get_nickname():
             logging.warning("Bot was kicked from the channel. Rejoining in 10 seconds...")
             connection.join(self.channel)
+            logging.info(f"Connected to {self.connection.server} {self.channel}")
+            self.connected = True
 
 
 def poll_api_forever(dcms, irc_bot: MyIRCBot):
@@ -129,14 +156,15 @@ def poll_api_forever(dcms, irc_bot: MyIRCBot):
 
                         logging.info("[DCMS] "+nick+": "+re.sub(r'[\r\n]+', ' ', message['msg']))
                         irc_bot.send_message_to_irc("[DCMS] "+nick+": "+re.sub(r'[\r\n]+', ' ', message['msg']))
-
+        except TimeoutError as e:
+            logging.error("[DCMSAPI] Timeout error.")
         except Exception as e:
-            logging.error(f"[API Polling Error] {e}", exc_info=True)
-        time.sleep(10)
+            logging.error(f"[API Polling Error] {e}")
+        time.sleep(5)
 
 def run_bot_forever():
 
-    dcms = DCMS.DCMS("huan_bot_test", "P@ssword2010")
+    dcms = DCMS.DCMS("dcmsirc_bot", "password")
     dcms.login()
     #logging.info(dcms.load_cookies())
 
