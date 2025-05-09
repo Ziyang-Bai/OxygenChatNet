@@ -67,22 +67,27 @@ class XMPPBot:
         self.room_jid = xmpp.JID(room)
         self.nick = nick
         self.irc_send_callback = irc_send_callback
+        self.message_buffer = []  # 添加消息缓冲区
         logger.debug(f"Initialized XMPPBot: {jid} -> {room} as {nick}")
 
     def connect(self):
-        logger.info("Connecting to XMPP server...")
-        if not self.client.connect():
-            logger.error("XMPP 连接失败")
-            raise Exception("XMPP连接失败")
-        logger.info("Authenticating XMPP...")
-        if not self.client.auth(self.jid.getNode(), self.password):
-            logger.error("XMPP 认证失败")
-            raise Exception("XMPP认证失败")
-        self.client.sendInitPresence()
-        self.client.RegisterHandler('presence', self.on_presence)
-        self.client.RegisterHandler('message', self.on_groupchat_message)
-        self.join_room()
-        logger.info(f"Join request sent to {self.room_jid}/{self.nick}, proceeding without explicit confirmation.")
+        while True:
+            try:
+                logger.info("Connecting to XMPP server...")
+                if not self.client.connect():
+                    raise Exception("XMPP连接失败")
+                logger.info("Authenticating XMPP...")
+                if not self.client.auth(self.jid.getNode(), self.password):
+                    raise Exception("XMPP认证失败")
+                self.client.sendInitPresence()
+                self.client.RegisterHandler('presence', self.on_presence)
+                self.client.RegisterHandler('message', self.on_groupchat_message)
+                self.join_room()
+                logger.info(f"Join request sent to {self.room_jid}/{self.nick}, proceeding without explicit confirmation.")
+                break
+            except Exception as e:
+                logger.error(f"XMPP connection error: {e}, retrying in 5 seconds...")
+                time.sleep(5)
 
     def join_room(self):
         pres = xmpp.Presence(to=f"{self.room_jid}/{self.nick}")
@@ -97,10 +102,19 @@ class XMPPBot:
         logger.debug(f"Presence received from {frm}: type={typ}, stanza={presence}")
 
     def send_message(self, message):
-        to_jid = str(self.room_jid)
-        logger.debug(f"XMPP sending to {to_jid}: {message}")
-        msg = xmpp.Message(to=to_jid, body=message, typ='groupchat')
-        self.client.send(msg)
+        self.message_buffer.append(message)  # 缓存消息
+        while self.message_buffer:
+            try:
+                to_jid = str(self.room_jid)
+                logger.debug(f"XMPP sending to {to_jid}: {self.message_buffer[0]}")
+                msg = xmpp.Message(to=to_jid, body=self.message_buffer[0], typ='groupchat')
+                self.client.send(msg)
+                logger.info(f"Sent to XMPP: {self.message_buffer[0]}")
+                self.message_buffer.pop(0)  # 发送成功后移除消息
+            except Exception as e:
+                logger.error(f"XMPP send error: {e}, retrying...")
+                time.sleep(5)
+                self.connect()  # 重新连接
 
     def on_groupchat_message(self, conn, msg):
         if msg.getType() == 'groupchat' and msg.getFrom().getResource() != self.nick:
@@ -158,8 +172,8 @@ class XMPPBot:
             try:
                 self.client.Process(1)
             except Exception as e:
-                logger.error(f"XMPP processing error: {e}")
-                time.sleep(5)
+                logger.error(f"XMPP processing error: {e}, reconnecting...")
+                self.connect()  # 重新连接
 
 class IRCBot:
     def __init__(self, server, port, nickname, channel, xmpp_bot):
@@ -169,6 +183,7 @@ class IRCBot:
         self.connection.add_global_handler('pubmsg', self.on_pubmsg)
         self.xmpp_bot = xmpp_bot
         self.channel = channel
+        self.message_buffer = []  # 添加消息缓冲区
 
     def on_connect(self, connection, event):
         logger.info(f"IRC joined channel {self.channel}")
@@ -201,19 +216,39 @@ class IRCBot:
             logger.error(f"Relay IRC→XMPP error: {e}")
 
     def send_to_irc(self, message):
-        logger.debug(f"IRC sending: {message}")
-        try:
-            self.connection.privmsg(self.channel, message)
-            logger.info(f"Sent to IRC: {message}")
-        except Exception as e:
-            logger.error(f"IRC send error: {e}")
+        self.message_buffer.append(message)  # 缓存消息
+        while self.message_buffer:
+            try:
+                self.connection.privmsg(self.channel, self.message_buffer[0])
+                logger.info(f"Sent to IRC: {self.message_buffer[0]}")
+                self.message_buffer.pop(0)  # 发送成功后移除消息
+            except Exception as e:
+                logger.error(f"IRC send error: {e}, retrying...")
+                time.sleep(5)
+                self.reconnect()  # 重新连接
+
+    def reconnect(self):
+        while True:
+            try:
+                logger.info("Reconnecting to IRC server...")
+                self.connection = self.reactor.server().connect(IRC_SERVER, IRC_PORT, IRC_NICK)
+                self.connection.add_global_handler('welcome', self.on_connect)
+                self.connection.add_global_handler('pubmsg', self.on_pubmsg)
+                self.connection.join(self.channel)
+                logger.info("Reconnected to IRC server.")
+                break
+            except Exception as e:
+                logger.error(f"IRC reconnection error: {e}, retrying in 5 seconds...")
+                time.sleep(5)
 
     def start(self):
-        try:
-            logger.info("Starting IRC loop")
-            self.reactor.process_forever()
-        except Exception as e:
-            logger.error(f"IRC loop error: {e}")
+        while True:
+            try:
+                logger.info("Starting IRC loop")
+                self.reactor.process_forever()
+            except Exception as e:
+                logger.error(f"IRC loop error: {e}, reconnecting...")
+                self.reconnect()  # 重新连接
 
 
 def run_xmpp_bot(xmpp_bot):
