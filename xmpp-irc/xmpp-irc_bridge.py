@@ -121,7 +121,23 @@ class XMPPBot:
             user = msg.getFrom().getResource()
             body = msg.getBody()
             logger.debug(f"XMPP message from {user}: {body}")
-            if not body or body.startswith((';', '!')):
+            if not body:
+                return
+            # 处理以 '!' 开头的指令
+            if body.startswith('!xmppirc '):
+                command = body.split(' ', 1)[1].strip()
+                logger.info(f"Received control command from XMPP: {command}")
+                if command in ('on', 'off', 'status'):  # 仅处理已定义的控制命令
+                    self.handle_control(command)
+                else:
+                    # 非控制命令的消息转发到 IRC
+                    formatted = f"[XMPP] {user}: {body}"
+                    logger.info(f"Relaying XMPP→IRC: {formatted}")
+                    if relay_enabled.is_set():
+                        try:
+                            self.irc_send_callback(formatted)
+                        except Exception as e:
+                            logger.error(f"Relay XMPP→IRC error: {e}")
                 return
             # 避免多次封装：如果已有标签前缀则跳过
             if any(body.startswith(tag) for tag in TAG_PREFIXES):
@@ -148,10 +164,10 @@ class XMPPBot:
         logger.info(f"XMPP control cmd: {cmd}")
         if cmd == 'on':
             relay_enabled.set()
-            self.send_message(';Relay enabled')
+            self.send_message('Relay enabled')  # 移除前缀 ';'
         elif cmd == 'off':
             relay_enabled.clear()
-            self.send_message(';Relay disabled')
+            self.send_message('Relay disabled')  # 移除前缀 ';'
         elif cmd == 'status':
             uptime = datetime.datetime.now() - start_time
             xmpp_status = 'connected' if self.client.isConnected() else 'disconnected'
@@ -161,7 +177,7 @@ class XMPPBot:
             except:
                 pass
             status_msg = (
-                f";Status: {'enabled' if relay_enabled.is_set() else 'disabled'} | "
+                f"Status: {'enabled' if relay_enabled.is_set() else 'disabled'} | "
                 f"Uptime: {str(uptime).split('.')[0]} | IRC: {irc_status} | XMPP: {xmpp_status}"
             )
             self.send_message(status_msg)
@@ -189,12 +205,37 @@ class IRCBot:
         logger.info(f"IRC joined channel {self.channel}")
         connection.join(self.channel)
 
+    def process_message(self, msg):
+        try:
+            return msg.decode('utf-8', errors='replace')  # 替换无法解码的字符
+        except Exception as e:
+            logger.error(f"Message decoding error: {e}")
+            return None
+
     def on_pubmsg(self, connection, event):
-        msg = event.arguments[0]
+        raw_msg = event.arguments[0]
+        msg = self.process_message(raw_msg.encode('utf-8'))  # 确保消息为 UTF-8 编码
+        if not msg:
+            return
         user = event.source.nick
         logger.debug(f"IRC message from {user}: {msg}")
         # 控制前缀过滤
-        if msg.startswith((';', '!')):
+        if msg.startswith(';'):
+            return
+        # 处理控制命令
+        if msg.startswith('!xmppirc '):
+            command = msg.split(' ', 1)[1].strip()
+            logger.info(f"Received control command from IRC: {command}")
+            if command in ('on', 'off', 'status'):  # 仅处理已定义的控制命令
+                self.xmpp_bot.handle_control(command)
+            else:
+                # 非控制命令的消息转发到 XMPP
+                formatted = f"[IRC] {user}: {msg}"
+                logger.info(f"Relaying IRC→XMPP: {formatted}")
+                try:
+                    self.xmpp_bot.send_message(formatted)
+                except Exception as e:
+                    logger.error(f"Relay IRC→XMPP error: {e}")
             return
         # 如果消息中包含已知标签段，则提取该段并转发
         for tag in EXTRACT_TAGS:
